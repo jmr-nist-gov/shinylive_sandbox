@@ -1,0 +1,16 @@
+[2024-04-24 20:27:04 UTC]	Starting data refresh from Freezerworks.
+[2024-04-24 20:27:05 UTC]	Reading sheet 'Samples' from .xlsx file at 'O:/Data Tool Development/Freezerworks/UDFs_for_live_inventory.xlsx'.
+[2024-04-24 20:27:06 UTC]	'Samples' was last updated on 2024-04-23.
+[2024-04-24 20:27:06 UTC]	'Samples' includes 40 requested UDFs.
+[2024-04-24 20:27:07 UTC]	'Samples' includes 19,518 records.
+[2024-04-24 20:27:07 UTC]	Caching timestamped 'Samples' records to ./data_update/Samples_20240424.feather.
+[2024-04-24 20:27:07 UTC]	Refreshing 'Samples' cache in ./app/Samples.feather.
+[2024-04-24 20:27:10 UTC]	Reading sheet 'Aliquots' from .xlsx file at 'O:/Data Tool Development/Freezerworks/UDFs_for_live_inventory.xlsx'.
+[2024-04-24 20:27:10 UTC]	'Aliquots' was last updated on 2024-04-23.
+[2024-04-24 20:27:10 UTC]	'Aliquots' includes 15 requested UDFs.
+[2024-04-24 20:27:15 UTC]	'Aliquots' includes 192,077 records.
+[2024-04-24 20:27:15 UTC]	Caching timestamped 'Aliquots' records to ./data_update/Aliquots_20240424.feather.
+[2024-04-24 20:27:15 UTC]	Refreshing 'Aliquots' cache in ./app/Aliquots.feather.
+[2024-04-24 20:27:17 UTC]	Closing Freezerworks connection.
+[2024-04-24 20:27:17 UTC]	Data refresh required 13.00 seconds.
+----------------------------------------------------------------------
