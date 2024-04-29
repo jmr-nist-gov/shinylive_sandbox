@@ -1,0 +1,18 @@
+.dataTables_filter {
+  display: inline-flex;
+  float: right;
+  padding: 15px 0 0 0;
+};
+.html-fill-container {
+  padding: 0.25em;
+};
+#map {
+  height: 45vh !important;
+};
+.map_controls {
+  top: -30px;
+  left: 10px;
+}
+.map_hover_info {
+  margin-bottom: 0;
+};
