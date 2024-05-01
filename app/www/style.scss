@@ -1,0 +1,42 @@
+.sidebar_bottom_left {
+  position: absolute;
+  bottom: 5px;
+  font-size: smaller;
+}
+.dataTables_filter {
+  display: inline-flex;
+  float: right;
+}
+.dataTables_wrapper {
+  padding: 5px;
+  font-size: small;
+}
+.dataTables_info {
+  display: inline-block !important;
+}
+.dataTables_paginate {
+  float:right;
+}
+.html-fill-container {
+  padding: 0 !important;
+}
+#map {
+  height: 47vh !important;
+}
+.map_controls {
+  top: -35px;
+  left: 5px;
+  position: relative;
+}
+.map_controls > div {
+  width: fit-content !important;
+  background-color: white;
+  margin: 0;
+  padding: 0 5px;
+  border: white 1px solid;
+  border-radius: 5px;
+  display: inline-block;
+}
+.map_hover_info {
+  margin-bottom: 0;
+}

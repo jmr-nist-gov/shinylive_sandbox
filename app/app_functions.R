@@ -122,3 +122,23 @@ create_timeline <- function(x, date_range = NULL, date_format = NULL, cumulative
   names(out) <- stri_trans_totitle(gsub("[[:punct:]]", " ", names(out)))
   return(xts(out[, -1], out[, 1]))
 }
+
+trim_table_cols <- function(df, cols) {
+  df <- df |>
+    select(
+      -starts_with("FK"),
+      -starts_with("PK"),
+      all_of(unlist(unname(cols)))
+    ) |>
+    select(
+      where(\(x) !all(is.na(x)))
+    ) |>
+    mutate(
+      across(
+        where(is.character),
+        as.factor
+      )
+    )
+  out <- sapply(cols, \(x) x[x %in% names(df)])
+  return(list(df = df, cols = out))
+}

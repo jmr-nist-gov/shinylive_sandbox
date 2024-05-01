@@ -14,18 +14,35 @@ library(geosphere)
 
 # Functions and presets ----
 source("app_functions.R")
+source("modals.R")
 default_date_format <- "%Y-%m-%d"
+display_table_cols <- list(
+  invisible = c(
+    "GU Sample ID", "GU Aliquot ID", "Aliquot ID", "NRDA ID"
+  ),
+  w250 = c("Species", "Common Name"),
+  w150 = c("Accession Date", "Tissue Type", "Container Type"),
+  w100 = c("State", "Country", "City Island Comm", "Island", "Field ID", "Colony Name"),
+  w075 = c("Project ID", "Sub Project", "Sex")
+)
 
 # Data ----
 # Data are kept recent every Saturday by a scheduled task
-aliquots      <- feather::read_feather("data/Aliquots.feather")
+aliquots      <- feather::read_feather(file.path("data", "Aliquots.feather"))
+data_updated  <- file.info(file.path("data", "Aliquots.feather"))$mtime
 udfs_aliquots <- names(aliquots)
-samples       <- feather::read_feather("data/Samples.feather")
+samples       <- feather::read_feather(file.path("data", "Samples.feather"))
 udfs_samples  <- names(samples)
 udfs_all      <- sort(c(udfs_aliquots, udfs_samples))
 udfs_dates    <- udfs_all[grep("date", tolower(udfs_all))]
 udfs_samples  <- sort(udfs_samples[-grep("[fp]k|uid", tolower(udfs_samples))])
 udfs_aliquots <- sort(udfs_aliquots[-grep("[fp]k|uid", tolower(udfs_aliquots))])
+to_factor     <- c(
+  "SPECIES", "COMMON_NAME", "TISSUE_TYPE", "CONTAINER_TYPE", "CITY", "COUNTRY",
+  "PROJECT_ID", "SUB_PROJECT", "COLLECTION_NAME", "COLLECTION_TYPE", "region",
+  "SEX"
+)
+
 NBR_df        <- aliquots |>
   filter(!POSITION1 == "") |>
   left_join(
@@ -33,33 +50,34 @@ NBR_df        <- aliquots |>
     by = c("FK_SAMPLEUID" = "PK_SAMPLEUID")
   ) |>
   relocate(
+    PROJECT_ID,
+    SUB_PROJECT,
     GUSAMPLEID,
     GUALIQUOTID,
     SPECIES,
     COMMON_NAME,
+    SEX,
     TISSUE_TYPE,
     CONTAINER_TYPE,
     .before = everything()
   ) |>
   mutate(region = tolower(state.name[match(STATE, state.abb)]),
          region = str_to_title(region),
+         COMMON_NAME = COMMON_NAME |>
+           str_replace_all(" Seal", " seal") |>
+           str_replace_all(" Whale", " whale"),
+         SEX = str_to_title(SEX),
+         TISSUE_TYPE = str_to_title(TISSUE_TYPE),
+         AGE_CLASS = str_to_title(AGE_CLASS),
          COLLECTION_YEAR = ifelse(
            is.na(COLLECTION_YEAR) | COLLECTION_YEAR == 0,
            year(min(DATE_COLLECTED, DATE_IN, DATE_OUT, na.rm = T)),
            COLLECTION_YEAR)
   ) |>
   mutate(COLLECTION_YEAR = as_date(sprintf("%s-12-31", COLLECTION_YEAR))) |>
-  select(-STATE) |>
-  mutate(
-    across(
-      any_of(c("SPECIES", "COMMON_NAME", "TISSUE_TYPE", "CONTAINER_TYPE", "CITY", "COUNTRY")),
-      as.factor
-    ),
-    across(
-      starts_with("AGE"),
-      as.factor
-    )
-  )
+  mutate(across(where(is.character), \(x) ifelse(x == "", NA, x))) |>
+  relocate(any_of(c("region", "COUNTRY", "DATE_IN")), .after = TISSUE_TYPE) |>
+  select(-any_of(c("STATE", "DATE_OUT")))
 list_projects <- sort(unique(NBR_df$PROJECT_ID))
 list_subprojects <- sort(unique(NBR_df$SUB_PROJECT))
 
@@ -76,16 +94,18 @@ states$xy     <- as.data.frame(
   setNames(c("orig.long", "orig.lat")) |>
   mutate(region = as.character(states$name))
 
+# Styles ----
+# css <- readLines("www/style.css")
+
 # UI ----
 ui <- page_sidebar(
-  tags$head(
-    tags$style(
-      "
-
-      "
-    )
-  ),
+  theme = bs_add_rules(bs_theme(version = 5), sass::sass_file("www/style.scss")),
+  # tags$head(
+  #   tags$link(rel = "stylesheet", type = "text/css", href = "style.css")
+  # ),
   lang = "en",
+  fillable = TRUE,
+  fillable_mobile = TRUE,
   window_title = "NIST Biorepository Collection Browser",
   # title = tags$span(
   #   tags$a(
@@ -100,6 +120,11 @@ ui <- page_sidebar(
   title = "NIST Biorepository Collection Browser",
   sidebar = sidebar(
     actionButton(inputId = "browse", label = "Inspect", icon = icon("user-ninja")),
+    tags$span(
+      class = "sidebar_bottom_left",
+      actionButton(inputId = "about", label = "About", width = "100%"),
+      p(id = "data_as_of", sprintf("Data last updated %s.", format(data_updated, '%Y-%m-%d')))
+    ),
     selectizeInput(
       inputId = "select_project",
       label = "Project ID",
@@ -119,12 +144,11 @@ ui <- page_sidebar(
     gap = '5px',
     tags$span(
       height = "100%",
-      leafletOutput(outputId = "map", height = "47vh"),
+      leafletOutput(outputId = "map"),
       tags$span(
         style = "display: inline",
         class = "map_controls",
-        input_switch(id = "map_type", label = "Map Type", value = FALSE),
-        textOutput(outputId = "map_type_display")
+        input_switch(id = "map_type", label = "View as Choropleth", value = FALSE)
       )
     ),
     # dygraphOutput(outputId = "timeline"),
@@ -168,30 +192,41 @@ server <- function(input, output, session) {
     #     ) |>
     #     select(where(\(x) !all(is.na(x))))
     # } else {
-    timeline_data() |>
-      select(where(\(x) !all(is.na(x))))
+    timeline_data() # |>
+    # mutate(across(everything(), \(x) ifelse(x == "", NA, x))) |>
+    # select(where(\(x) !all(is.na(x))))
     # }
   })
   selected_data_clean_names <- reactive({
     selected_data() |>
+      mutate(COLLECTION_YEAR = lubridate::year(COLLECTION_YEAR)) |>
       rename_with(str_replace_all, pattern = "_", replacement = " ") |>
       rename_with(str_to_title) |>
-      rename_with(str_replace_all, pattern = "id$", replacement = "ID") |>
+      rename_with(str_replace_all, pattern = "[Ii]d$", replacement = "ID") |>
       rename_with(str_replace_all, pattern = "Nrda", replacement = "NRDA") |>
       rename_with(str_replace_all, pattern = "Nist", replacement = "NIST") |>
       rename_with(str_replace_all, pattern = "Mesb", replacement = "MESB") |>
       rename_with(str_replace_all, pattern = "Sfei", replacement = "SFEI") |>
-      rename(
+      rename(any_of(
         c(
           "GU Sample ID" = "GusampleID",
           "GU Aliquot ID" = "GualiquotID",
           "Current Amount" = "Currentamount",
           "Number of Thaws" = "Numberofthaws",
-          "Sample Type" = "Sampletype"
+          "Sample Type" = "Sampletype",
+          "State" = "Region",
+          "Accession Date" = "Date In"
         )
-      ) |>
-      select(-contains("^[PFpf][Kk]"))
+      )) |>
+      select(-matches("^[PFpf][Kk]"), -Position1) |>
+      mutate(
+        across(
+          where(is.character),
+          \(x) ifelse(x == "", NA, x)
+        )
+      )
   })
+  table_data <- reactive(trim_table_cols(selected_data_clean_names(), display_table_cols))
   # time_range_raw         <- reactive({
   #   if (is.null(input$overview_timeline_date_window)) {
   #     NULL
@@ -258,7 +293,31 @@ server <- function(input, output, session) {
     if (!is.null(selected_projects())) a_projct <- unique(c(selected_projects(), a_projct))
     applicable_projects(a_projct)
   })
-  ## Map proxy update ----
+  ## Map ----
+  observeEvent(input$map_shape_click, {
+    shape_click_id <- input$map_shape_click$id
+    shape_click_id <- gsub("_line|_circle", "", shape_click_id)
+    if (!shape_click_id == "HML") {
+      state_data <- isolate(selected_data()) %>%
+        filter(region == shape_click_id) %>%
+        count(SPECIES, COMMON_NAME, AGE_CLASS, SEX, TISSUE_TYPE) %>%
+        mutate(SPECIES = paste0("(", SPECIES, ")")) %>%
+        unite(Species, COMMON_NAME, SPECIES, sep = " ") %>%
+        arrange_all() %>%
+        mutate_if(is.character, as.factor) %>%
+        setNames(c("Species", "Age Class", "Sex", "Tissue Type", "n"))
+      output$modal_state_info_dt <- renderDT(
+        datatable(state_data,
+                  rownames = FALSE,
+                  escape = FALSE,
+                  filter = "top",
+                  options = list(autoWidth = TRUE,
+                                 columnDefs = list(list(width = "40%", targets = 0)))
+        )
+      )
+      showModal(modal_state_info(sum(state_data$n), shape_click_id, n_distinct(state_data$Species)))
+    }
+  })
   observe({
     # Clear the map
     leafletProxy("map") |>
@@ -368,22 +427,29 @@ server <- function(input, output, session) {
   # Outputs ----
   ## Map ----
   output$map <- renderLeaflet(base_map)
-  output$map_type_display <- renderText(ifelse(req(input$map_type), "Choropleth", "Bubble"))
   ## Narrative ----
   output$narrative <- renderText("[Placeholder for short narrative of some sort.]")
   ## Data Table ----
   output$table <- renderDT(
     server = TRUE,
     expr = datatable(
-      req(selected_data_clean_names()) |>
-        select(-starts_with("FK"), -starts_with("PK")),
+      req(table_data()$df),
       extension = c('Buttons', 'ColReorder'),
       rownames = FALSE,
       filter = "top",
       fillContainer = TRUE,
       options = list(
         dom = "Bfrtip",
+        autoWidth = TRUE,
         colReorder = TRUE,
+        columnDefs = list(
+          list(visible = FALSE, targets = table_data()$cols$invisible),
+          list(width = "250px", targets = table_data()$cols$w250),
+          list(width = "100px", targets = table_data()$cols$w100),
+          list(width = "150px", targets = table_data()$cols$w150),
+          list(width = "75px", targets = table_data()$cols$w075),
+          list(width = "50px", targets = "_all")
+        ),
         buttons = list(
           list(extend = "csv", text = "Export to CSV", exportOptions = list(modifier = list(page = "all"))),
           "colvis"
